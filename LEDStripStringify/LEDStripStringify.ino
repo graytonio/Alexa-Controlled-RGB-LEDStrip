@@ -10,7 +10,7 @@
 #define g 5
 #define b 4
 
-#define initArgs "{\"args\": {\"name\": \"LED Strip\",\"type\": \"led-strip\", \"r\": 255, \"g\": 255, \"b\": 255}}";
+#define initArgs "{\"args\": {\"name\": \"LED Strip\",\"type\": \"led-strip\", \"r\": 255, \"g\": 255, \"b\": 255}}"
 
 const byte DNS_PORT = 53;
 IPAddress apIP(10,10,10,1);
@@ -19,9 +19,9 @@ ESP8266WebServer webServer(80);
 
 HTTPClient http;
 bool wifi = false;
-String ssid;
-String password;
-String hub;
+const char* ssid;
+const char* password;
+const char* hub;
 String id;
 String portal;
 
@@ -46,7 +46,7 @@ void setup () {
 
   File root = SPIFFS.open("/index.html", "r");
   while(root.available()) portal+= char(root.read());
-  root.close
+  root.close();
 
   //Resolve device ID
   getID();
@@ -57,11 +57,11 @@ void handleRoot(){
 }
 
 void handleConnection(){
-  ssid = webServer.arg("ssid");
-  pass = webServer.arg("pass");
-  hub = webServer.arg("hub");
-  server.sendHeader("Location", "/");
-  server.send(303);
+  ssid = webServer.arg("ssid").c_str();
+  password = webServer.arg("pass").c_str();
+  hub = webServer.arg("hub").c_str();
+  webServer.sendHeader("Location", "/");
+  webServer.send(303);
   connectToNetwork();
 }
 
@@ -72,7 +72,7 @@ void getID(){
     while(idConfig.available()) id += char(idConfig.read());
     idConfig.close();
 
-    http.begin("http://" + hub + "/get/" + id);
+    http.begin("http://" + String(hub) + "/get/" + id);
     int httpCode = http.GET();
     http.end();
     if(httpCode == 404) newDevice();
@@ -98,7 +98,7 @@ void connectToNetwork(){
 void newDevice(){
   Serial.println("Sending create request to server");
   //Send request for new device
-  http.begin("http://" + hub + "/new");
+  http.begin("http://" + String(hub) + "/new");
   http.addHeader("Content-Type", "application/json");
   int httpCode = http.POST(initArgs);
 
@@ -125,7 +125,7 @@ void loop() {
   if(wifi){
     DynamicJsonBuffer jsonBuffer(512);
     if (WiFi.status() == WL_CONNECTED) {
-      http.begin("http://" + hub + "/get/" + id);
+      http.begin("http://" + String(hub) + "/get/" + id);
       int httpCode = http.GET();
       if (httpCode > 0) {
         JsonObject& root = jsonBuffer.parseObject(http.getString());
