@@ -19,13 +19,15 @@ ESP8266WebServer webServer(80);
 
 HTTPClient http;
 bool wifi = false;
-const char* ssid;
-const char* password;
-const char* hub;
+String ssid;
+String password;
+String hub;
 String id;
 String portal;
 
 void setup () {
+  WiFi.softAPdisconnect(true);
+  
   //Set lights to off durring boot
   pinMode(r, OUTPUT);
   pinMode(g, OUTPUT);
@@ -34,22 +36,21 @@ void setup () {
 
   SPIFFS.begin();
   Serial.begin(115200);
+  
+  getWifi();
+}
 
+void initPortal(){
+  WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255,255,255,0));
   WiFi.softAP("LED STRIP");
-
   dnsServer.start(DNS_PORT, "*", apIP);
-
   webServer.on("/", HTTP_GET, handleRoot);
   webServer.on("/connect", HTTP_POST, handleConnection);
   webServer.begin();
-
   File root = SPIFFS.open("/index.html", "r");
   while(root.available()) portal+= char(root.read());
   root.close();
-
-  //Resolve device ID
-  getID();
 }
 
 void handleRoot(){
@@ -57,12 +58,15 @@ void handleRoot(){
 }
 
 void handleConnection(){
-  ssid = webServer.arg("ssid").c_str();
-  password = webServer.arg("pass").c_str();
-  hub = webServer.arg("hub").c_str();
-  webServer.sendHeader("Location", "/");
-  webServer.send(303);
+  ssid = webServer.arg("ssid");
+  password = webServer.arg("pass");
+  hub = webServer.arg("hub");
+  Serial.println(ssid);
+  Serial.println(password);
+  Serial.println(hub);
+  webServer.send(200);
   connectToNetwork();
+  ESP.reset();
 }
 
 //Resolve ID with Server
@@ -82,9 +86,55 @@ void getID(){
   }
 }
 
+void getWifi(){
+  if(SPIFFS.exists("/wifi")){
+    Serial.println("Loading Wifi Configuration");
+    File wifiCon=SPIFFS.open("/wifi", "r");
+    int line = 0;
+    while(wifiCon.available()){
+      char in = char(wifiCon.read());
+      if(in == '\n'){
+        line++;
+        continue;
+      }
+      if(line == 0) ssid += in;
+      if(line == 1) password += in;
+      if(line == 2) hub += in;
+    }
+    wifiCon.close();
+
+    Serial.println(ssid);
+    Serial.println(password);
+    Serial.println(hub);
+    Serial.println("Connecting");
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid.c_str(), password.c_str());
+    for(int i=0; i<5; i++){
+      delay(1000);
+    }
+    if(WiFi.status() == WL_CONNECTED){
+      Serial.println("Connected");
+      wifi = true;
+      getID();
+    }else{
+      Serial.println("Connection Failed Using captive portal");
+      WiFi.disconnect();
+      initPortal();
+    }
+  }else{
+    initPortal();
+  }
+  
+}
+
 //Connect to Wifi Connection
 void connectToNetwork(){
-  WiFi.begin(ssid, password);
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect();
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  Serial.println(String(ssid));
   Serial.print("Connecting");
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -92,6 +142,12 @@ void connectToNetwork(){
   }
   Serial.println("\nConnected Successfully");
   wifi=true;
+  File wifiCon = SPIFFS.open("/wifi", "w");
+  wifiCon.print(ssid + '\n');
+  wifiCon.print(password + '\n');
+  wifiCon.print(hub);
+  wifiCon.close();
+  getID();
 }
 
 //Create a new device on the server
